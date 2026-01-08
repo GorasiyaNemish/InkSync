@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useTool } from "../context/ToolContext";
 import type { DrawEvent } from "@whiteboard/shared-types";
 import { socket } from "../socket";
+import { useBoardSocket } from "../hooks/useBoardSocket";
 
 export default function CanvasStage({ boardId }: { boardId: string }) {
   const { tool, color } = useTool();
 
-  const [drawings, setDrawings] = useState<DrawEvent[]>([]);
+  const { drawings, setDrawings, sendStroke } = useBoardSocket(boardId);
 
   const [editingText, setEditingText] = useState<DrawEvent | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -18,25 +19,6 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
   const isDrawing = useRef(false);
   const currentId = useRef<string | null>(null);
   const currentStroke = useRef<DrawEvent | null>(null);
-
-  /* ---------------- SOCKET ---------------- */
-
-  useEffect(() => {
-    socket.emit("join-board", boardId);
-
-    socket.on("board:init", (strokes: DrawEvent[]) => {
-      setDrawings(strokes);
-    });
-
-    socket.on("drawing:event", (stroke: DrawEvent) => {
-      setDrawings((prev) => [...prev, stroke]);
-    });
-
-    return () => {
-      socket.off("board:init");
-      socket.off("drawing:event");
-    };
-  }, [boardId]);
 
   /* ---------------- DRAWING ---------------- */
 
@@ -108,10 +90,7 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
     isDrawing.current = false;
 
     if (currentStroke.current) {
-      socket.emit("drawing:event", {
-        boardId,
-        stroke: currentStroke.current,
-      });
+      sendStroke(currentStroke.current);
     }
 
     currentId.current = null;
@@ -133,11 +112,7 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
     };
 
     setDrawings((prev) => [...prev, stroke]);
-
-    socket.emit("drawing:event", {
-      boardId,
-      stroke,
-    });
+    sendStroke(stroke);
   };
 
   /* ---------------- RENDER ---------------- */
