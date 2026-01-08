@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Typescript
+*.tsbuildinfo
+
+# Vite / React cache
+.vite/
+.cache/
+.temp/
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Debug / runtime
+tmp/
+temp/
+*.pid
+*.seed
+*.pid.lock
+
+# Generated types / lib outputs
+**/dist/
+**/lib/
+
+# Local tooling
+.eslintcache
+.stylelintcache
+
+# Runtime uploads (if any)
+uploads/
