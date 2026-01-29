@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ShareBoardModal from "./ShareBoardModal";
 
-const ShareButton = ({ boardId }) => {
+const ShareButton = ({ boardId }: { boardId: string }) => {
   const [isShareOpen, setShareOpen] = useState(false);
 
   return (

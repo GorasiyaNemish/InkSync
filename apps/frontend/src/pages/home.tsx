@@ -1,17 +1,9 @@
-import { useState } from "react";
 import { useNavigate } from "react-router";
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [error, setError] = useState("");
 
   const createBoard = () => {
-    // if (!username.trim()) {
-    //   setError("Username is required");
-    //   return;
-    // }
-
     const boardId = crypto.randomUUID();
     navigate(`/board/${boardId}`);
   };

@@ -1,18 +1,14 @@
 {
   "name": "whiteboard-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm --filter @whiteboard/shared-types build && pnpm --filter @whiteboard/backend build && pnpm --filter @whiteboard/frontend build",
+    "start": "node apps/backend/dist/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.12.4",
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "ts-node": "^10.9.2",
     "typescript": "~5.9.3"
-  }
+  },
+  "packageManager": "pnpm@10.12.4"
 }

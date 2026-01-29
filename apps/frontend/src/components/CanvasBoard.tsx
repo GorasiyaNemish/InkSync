@@ -1,8 +1,7 @@
 import { Stage, Layer, Line, Rect, Circle, Text } from "react-konva";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTool } from "../context/ToolContext";
 import type { DrawEvent } from "@whiteboard/shared-types";
-import { socket } from "../socket";
 import { useBoardSocket } from "../hooks/useBoardSocket";
 
 export default function CanvasStage({ boardId }: { boardId: string }) {
@@ -80,7 +79,7 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
 
         currentStroke.current = updated;
         return updated;
-      })
+      }),
     );
   };
 
