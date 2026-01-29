@@ -3,7 +3,7 @@ import { useTool } from "../context/ToolContext";
 export function ShapeSelector() {
   const { tool, setTool } = useTool();
 
-  const tools = ["pen", "rect", "circle", "text"] as const;
+  const tools = ["pen", "rect", "circle"] as const;
 
   return (
     <div className="flex gap-2">

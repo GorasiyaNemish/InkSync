@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import { registerDrawingHandlers } from "./drawing";
 import { env } from "../config/env";
 import { Server as HttpServer } from "node:http";
+import { registerPresenceHandlers } from "./presence";
 
 export function createSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -12,6 +13,7 @@ export function createSocketServer(httpServer: HttpServer) {
   });
 
   registerDrawingHandlers(io);
+  registerPresenceHandlers(io);
 
   return io;
 }
