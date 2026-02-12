@@ -23,7 +23,7 @@ export type Point = { x: number; y: number };
 
 export type DrawEvent = {
   id: string;
-  tool: "pen" | "rect" | "circle" | "text";
+  tool: "pen" | "rect" | "circle" | "text" | "eraser";
   color: string;
   points?: number[];
   x?: number;
@@ -31,6 +31,15 @@ export type DrawEvent = {
   width?: number;
   height?: number;
   text?: string;
+};
+
+export type DeleteEvent = {
+  id: string;
+  type: "delete";
+};
+
+export type UndoRedoAction = {
+  type: "undo" | "redo";
 };
 
 export type BoardState = {

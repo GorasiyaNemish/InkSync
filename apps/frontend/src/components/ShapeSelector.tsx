@@ -3,7 +3,7 @@ import { useTool } from "../context/ToolContext";
 export function ShapeSelector() {
   const { tool, setTool } = useTool();
 
-  const tools = ["pen", "rect", "circle"] as const;
+  const tools = ["pen", "rect", "circle", "eraser"] as const;
 
   return (
     <div className="flex gap-2">
@@ -11,11 +11,12 @@ export function ShapeSelector() {
         <button
           key={t}
           onClick={() => setTool(t)}
-          className={`px-3 py-2 rounded-lg text-sm
-            ${
-              tool === t
-                ? "bg-blue-600 text-white"
-                : "bg-neutral-700 text-neutral-300"
+          className={`px-3 py-2 rounded-lg text-sm capitalize
+            ${tool === t
+              ? t === "eraser"
+                ? "bg-red-600 text-white"
+                : "bg-blue-600 text-white"
+              : "bg-neutral-700 text-neutral-300"
             }`}
         >
           {t}
