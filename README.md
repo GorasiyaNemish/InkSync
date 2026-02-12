@@ -8,6 +8,15 @@ This repository contains the frontend, backend service and shared packages, full
 
 ## ✨ Features
 
+### 🎨 Whiteboard Capabilities
+- ✏️ **Drawing Tools**: Pen, rectangles, circles, and text annotations
+- 🗑️ **Eraser Tool**: Click to delete individual strokes
+- ↶↷ **Undo/Redo**: Full history tracking with keyboard shortcuts (Ctrl+Z/Y)
+- 🔍 **Zoom & Pan**: Mouse wheel zoom and middle-click pan navigation
+- 🎨 **Color Picker**: Customizable stroke colors
+- 👥 **Real-time Collaboration**: See other users' drawings instantly
+
+### 🏗️ Architecture
 - 🏗️ **Monorepo architecture** using `pnpm workspaces`
 - ⚡ **TypeScript-first** codebase
 - 📦 Shared packages (`shared-types`) for type safety

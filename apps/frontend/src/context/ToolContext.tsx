@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from "react";
 
-export type Tool = "pen" | "rect" | "circle" | "text";
+export type Tool = "pen" | "rect" | "circle" | "text" | "eraser";
 
 type ToolState = {
   tool: Tool;

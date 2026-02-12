@@ -16,9 +16,15 @@ export function useBoardSocket(boardId: string) {
       setDrawings((prev) => [...prev, stroke]);
     });
 
+    // Listen for synchronized board state (for undo/redo/delete)
+    socket.on("board:sync", (strokes: DrawEvent[]) => {
+      setDrawings(strokes);
+    });
+
     return () => {
       socket.off("board:init");
       socket.off("drawing:event");
+      socket.off("board:sync");
     };
   }, [boardId]);
 
@@ -26,5 +32,17 @@ export function useBoardSocket(boardId: string) {
     socket.emit("drawing:event", { boardId, stroke });
   };
 
-  return { drawings, setDrawings, sendStroke };
+  const deleteStroke = (strokeId: string) => {
+    socket.emit("drawing:delete", { boardId, strokeId });
+  };
+
+  const undo = () => {
+    socket.emit("drawing:undo", boardId);
+  };
+
+  const redo = () => {
+    socket.emit("drawing:redo", boardId);
+  };
+
+  return { drawings, setDrawings, sendStroke, deleteStroke, undo, redo };
 }

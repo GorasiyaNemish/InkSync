@@ -1,13 +1,23 @@
 import { Stage, Layer, Line, Rect, Circle, Text } from "react-konva";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useTool } from "../context/ToolContext";
 import type { DrawEvent } from "@whiteboard/shared-types";
 import { useBoardSocket } from "../hooks/useBoardSocket";
+import Konva from "konva";
 
-export default function CanvasStage({ boardId }: { boardId: string }) {
+interface CanvasStageProps {
+  boardId: string;
+  onZoomChange?: (scale: number, position: { x: number; y: number }) => void;
+}
+
+export default function CanvasStage({
+  boardId,
+  onZoomChange,
+}: CanvasStageProps) {
   const { tool, color } = useTool();
 
-  const { drawings, setDrawings, sendStroke } = useBoardSocket(boardId);
+  const { drawings, setDrawings, sendStroke, deleteStroke, undo, redo } =
+    useBoardSocket(boardId);
 
   const [editingText, setEditingText] = useState<DrawEvent | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -19,21 +29,138 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
   const currentId = useRef<string | null>(null);
   const currentStroke = useRef<DrawEvent | null>(null);
 
+  // Zoom and Pan state
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const stageRef = useRef<Konva.Stage>(null);
+  const isPanning = useRef(false);
+  const lastPanPosition = useRef({ x: 0, y: 0 });
+
+  // Eraser cursor position
+  const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
+
+  /* ---------------- KEYBOARD SHORTCUTS ---------------- */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl+Z or Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      // Redo: Ctrl+Y or Cmd+Shift+Z
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key === "y") ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z")
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
+
+  /* ---------------- ZOOM & PAN ---------------- */
+
+  // Notify parent of zoom changes
+  useEffect(() => {
+    if (onZoomChange) {
+      onZoomChange(scale, position);
+    }
+  }, [scale, position, onZoomChange]);
+
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const oldScale = scale;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - position.x) / oldScale,
+      y: (pointer.y - position.y) / oldScale,
+    };
+
+    // Zoom in/out
+    const scaleBy = 1.1;
+    const newScale =
+      e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+    // Limit zoom range
+    const clampedScale = Math.max(0.1, Math.min(5, newScale));
+
+    setScale(clampedScale);
+    setPosition({
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    });
+  };
+
+  // Expose zoom control methods
+  const zoomIn = () => {
+    const newScale = Math.min(5, scale * 1.2);
+    setScale(newScale);
+  };
+
+  const zoomOut = () => {
+    const newScale = Math.max(0.1, scale / 1.2);
+    setScale(newScale);
+  };
+
+  const resetZoom = () => {
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+  };
+
+  // Expose methods to parent (if needed)
+  useEffect(() => {
+    (window as any).canvasZoomControls = { zoomIn, zoomOut, resetZoom, scale };
+  }, [scale]);
+
   /* ---------------- DRAWING ---------------- */
 
   const onMouseDown = (e: any) => {
     if (isTyping.current) return;
 
-    const pos = e.target.getStage()?.getPointerPosition();
+    const stage = e.target.getStage();
+    const pos = stage?.getPointerPosition();
     if (!pos) return;
+
+    // Middle mouse button for panning
+    if (e.evt.button === 1) {
+      isPanning.current = true;
+      lastPanPosition.current = { x: pos.x, y: pos.y };
+      return;
+    }
+
+    // Transform position based on zoom/pan
+    const transformedPos = {
+      x: (pos.x - position.x) / scale,
+      y: (pos.y - position.y) / scale,
+    };
+
+    // Eraser tool - delete on click
+    if (tool === "eraser") {
+      const clickedStroke = findStrokeAtPosition(transformedPos);
+      if (clickedStroke) {
+        deleteStroke(clickedStroke.id);
+      }
+      return;
+    }
 
     if (tool === "text") {
       const textStroke: DrawEvent = {
         id: crypto.randomUUID(),
         tool: "text",
         color,
-        x: pos.x,
-        y: pos.y,
+        x: transformedPos.x,
+        y: transformedPos.y,
         text: "",
       };
 
@@ -50,19 +177,56 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
 
     const stroke: DrawEvent =
       tool === "pen"
-        ? { id, tool, color, points: [pos.x, pos.y] }
-        : { id, tool, color, x: pos.x, y: pos.y, width: 0, height: 0 };
+        ? { id, tool, color, points: [transformedPos.x, transformedPos.y] }
+        : {
+          id,
+          tool,
+          color,
+          x: transformedPos.x,
+          y: transformedPos.y,
+          width: 0,
+          height: 0,
+        };
 
     currentStroke.current = stroke;
     setDrawings((prev) => [...prev, stroke]);
   };
 
   const onMouseMove = (e: any) => {
+    const stage = e.target.getStage();
+    const pos = stage?.getPointerPosition();
+    if (!pos) return;
+
+    // Update eraser cursor position
+    if (tool === "eraser") {
+      const transformedPos = {
+        x: (pos.x - position.x) / scale,
+        y: (pos.y - position.y) / scale,
+      };
+      setEraserPos(transformedPos);
+    } else {
+      setEraserPos(null);
+    }
+
+    // Handle panning
+    if (isPanning.current) {
+      const dx = pos.x - lastPanPosition.current.x;
+      const dy = pos.y - lastPanPosition.current.y;
+      setPosition({
+        x: position.x + dx,
+        y: position.y + dy,
+      });
+      lastPanPosition.current = { x: pos.x, y: pos.y };
+      return;
+    }
+
     if (isTyping.current) return;
     if (!isDrawing.current || !currentId.current) return;
 
-    const pos = e.target.getStage()?.getPointerPosition();
-    if (!pos) return;
+    const transformedPos = {
+      x: (pos.x - position.x) / scale,
+      y: (pos.y - position.y) / scale,
+    };
 
     setDrawings((prev) =>
       prev.map((d) => {
@@ -70,21 +234,26 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
 
         const updated =
           d.tool === "pen"
-            ? { ...d, points: [...(d.points || []), pos.x, pos.y] }
+            ? { ...d, points: [...(d.points || []), transformedPos.x, transformedPos.y] }
             : {
-                ...d,
-                width: pos.x - (d.x || 0),
-                height: pos.y - (d.y || 0),
-              };
+              ...d,
+              width: transformedPos.x - (d.x || 0),
+              height: transformedPos.y - (d.y || 0),
+            };
 
         currentStroke.current = updated;
         return updated;
-      }),
+      })
     );
   };
 
   const onMouseUp = () => {
-    if (tool === "text") return;
+    if (isPanning.current) {
+      isPanning.current = false;
+      return;
+    }
+
+    if (tool === "text" || tool === "eraser") return;
 
     isDrawing.current = false;
 
@@ -114,17 +283,234 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
     sendStroke(stroke);
   };
 
+  // Helper function to find stroke at position
+  const findStrokeAtPosition = (pos: { x: number; y: number }) => {
+    // Increased tolerance for better eraser detection
+    const tolerance = 15 / scale; // Adjust tolerance based on zoom
+
+    // Check in reverse order (top to bottom)
+    for (let i = drawings.length - 1; i >= 0; i--) {
+      const d = drawings[i];
+
+      if (d.tool === "pen" && d.points) {
+        // Check if click is near any segment of the line
+        for (let j = 0; j < d.points.length - 2; j += 2) {
+          const x1 = d.points[j];
+          const y1 = d.points[j + 1];
+          const x2 = d.points[j + 2];
+          const y2 = d.points[j + 3];
+
+          // Distance from point to line segment
+          const dist = distanceToLineSegment(pos, { x: x1, y: y1 }, { x: x2, y: y2 });
+          if (dist < tolerance) return d;
+        }
+      } else if (d.tool === "rect") {
+        const x = d.x || 0;
+        const y = d.y || 0;
+        const w = d.width || 0;
+        const h = d.height || 0;
+
+        // Check if point is inside rectangle (with tolerance for borders)
+        if (
+          pos.x >= Math.min(x, x + w) - tolerance &&
+          pos.x <= Math.max(x, x + w) + tolerance &&
+          pos.y >= Math.min(y, y + h) - tolerance &&
+          pos.y <= Math.max(y, y + h) + tolerance
+        ) {
+          return d;
+        }
+      } else if (d.tool === "circle") {
+        const dist = Math.sqrt(
+          (pos.x - (d.x || 0)) ** 2 + (pos.y - (d.y || 0)) ** 2
+        );
+        const radius = Math.abs(d.width || 0);
+        if (Math.abs(dist - radius) < tolerance || dist < radius) {
+          return d;
+        }
+      } else if (d.tool === "text") {
+        // Better bounding box for text
+        const textWidth = (d.text?.length || 0) * 10;
+        const textHeight = 20;
+        if (
+          pos.x >= (d.x || 0) - tolerance &&
+          pos.x <= (d.x || 0) + textWidth + tolerance &&
+          pos.y >= (d.y || 0) - tolerance &&
+          pos.y <= (d.y || 0) + textHeight + tolerance
+        ) {
+          return d;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Helper function to calculate distance from point to line segment
+  const distanceToLineSegment = (
+    point: { x: number; y: number },
+    lineStart: { x: number; y: number },
+    lineEnd: { x: number; y: number }
+  ) => {
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared === 0) {
+      // Line segment is a point
+      return Math.sqrt(
+        (point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2
+      );
+    }
+
+    // Calculate projection of point onto line segment
+    let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared;
+    t = Math.max(0, Math.min(1, t));
+
+    const projX = lineStart.x + t * dx;
+    const projY = lineStart.y + t * dy;
+
+    return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
+  };
+
+  /* ---------------- TOUCH SUPPORT ---------------- */
+
+  const getTouchPos = (e: any) => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+
+    const touch = e.evt.touches[0] || e.evt.changedTouches[0];
+    if (!touch) return null;
+
+    const rect = stage.container().getBoundingClientRect();
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
+  };
+
+  const onTouchStart = (e: any) => {
+    e.evt.preventDefault();
+    const pos = getTouchPos(e);
+    if (!pos) return;
+
+    // Transform position based on zoom/pan
+    const transformedPos = {
+      x: (pos.x - position.x) / scale,
+      y: (pos.y - position.y) / scale,
+    };
+
+    // Eraser tool - delete on tap
+    if (tool === "eraser") {
+      const clickedStroke = findStrokeAtPosition(transformedPos);
+      if (clickedStroke) {
+        deleteStroke(clickedStroke.id);
+      }
+      return;
+    }
+
+    if (tool === "text") {
+      const textStroke: DrawEvent = {
+        id: crypto.randomUUID(),
+        tool: "text",
+        color,
+        x: transformedPos.x,
+        y: transformedPos.y,
+        text: "",
+      };
+
+      ignoreInitialBlur.current = true;
+      isTyping.current = true;
+      setEditingText(textStroke);
+      return;
+    }
+
+    // OTHER TOOLS
+    isDrawing.current = true;
+    const id = crypto.randomUUID();
+    currentId.current = id;
+
+    const stroke: DrawEvent =
+      tool === "pen"
+        ? { id, tool, color, points: [transformedPos.x, transformedPos.y] }
+        : {
+          id,
+          tool,
+          color,
+          x: transformedPos.x,
+          y: transformedPos.y,
+          width: 0,
+          height: 0,
+        };
+
+    currentStroke.current = stroke;
+    setDrawings((prev) => [...prev, stroke]);
+  };
+
+  const onTouchMove = (e: any) => {
+    e.evt.preventDefault();
+    if (isTyping.current) return;
+    if (!isDrawing.current || !currentId.current) return;
+
+    const pos = getTouchPos(e);
+    if (!pos) return;
+
+    const transformedPos = {
+      x: (pos.x - position.x) / scale,
+      y: (pos.y - position.y) / scale,
+    };
+
+    setDrawings((prev) =>
+      prev.map((d) => {
+        if (d.id !== currentId.current) return d;
+
+        const updated =
+          d.tool === "pen"
+            ? { ...d, points: [...(d.points || []), transformedPos.x, transformedPos.y] }
+            : {
+              ...d,
+              width: transformedPos.x - (d.x || 0),
+              height: transformedPos.y - (d.y || 0),
+            };
+
+        currentStroke.current = updated;
+        return updated;
+      })
+    );
+  };
+
+  const onTouchEnd = () => {
+    if (tool === "text" || tool === "eraser") return;
+
+    isDrawing.current = false;
+
+    if (currentStroke.current) {
+      sendStroke(currentStroke.current);
+    }
+
+    currentId.current = null;
+    currentStroke.current = null;
+  };
+
   /* ---------------- RENDER ---------------- */
 
   return (
     <>
       <Stage
+        ref={stageRef}
         tabIndex={-1}
         width={window.innerWidth}
         height={window.innerHeight}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onWheel={handleWheel}
+        scaleX={scale}
+        scaleY={scale}
+        x={position.x}
+        y={position.y}
+        style={{ cursor: tool === "eraser" ? "none" : "crosshair" }}
       >
         <Layer>
           {drawings.map((d) => {
@@ -177,6 +563,18 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
 
             return null;
           })}
+
+          {/* Eraser cursor */}
+          {tool === "eraser" && eraserPos && (
+            <Circle
+              x={eraserPos.x}
+              y={eraserPos.y}
+              radius={10}
+              stroke="#ff4444"
+              strokeWidth={2}
+              dash={[5, 5]}
+            />
+          )}
         </Layer>
       </Stage>
       {editingText && (
@@ -185,11 +583,13 @@ export default function CanvasStage({ boardId }: { boardId: string }) {
           autoFocus
           className="absolute bg-transparent border-none outline-none resize-none"
           style={{
-            left: editingText.x,
-            top: editingText.y,
+            left: editingText.x! * scale + position.x,
+            top: editingText.y! * scale + position.y,
             color: editingText.color,
-            fontSize: "18px",
+            fontSize: `${18 * scale}px`,
             fontFamily: "inherit",
+            transform: `scale(${1})`,
+            transformOrigin: "top left",
           }}
           onBlur={(e) => {
             if (ignoreInitialBlur.current) {
