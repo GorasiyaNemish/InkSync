@@ -123,6 +123,95 @@ export default function CanvasStage({
     (window as any).canvasZoomControls = { zoomIn, zoomOut, resetZoom, scale };
   }, [scale]);
 
+  /* ---------------- PINCH TO ZOOM (MOBILE) ---------------- */
+
+  const lastTouchDistance = useRef<number | null>(null);
+  const lastTouchCenter = useRef<{ x: number; y: number } | null>(null);
+
+  const getTouchDistance = (touch1: Touch, touch2: Touch) => {
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getTouchCenter = (touch1: Touch, touch2: Touch) => {
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2,
+    };
+  };
+
+  const handleTouchStart = (e: any) => {
+    const touches = e.evt.touches;
+
+    if (touches.length === 2) {
+      // Two finger touch - prepare for pinch zoom
+      e.evt.preventDefault();
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+
+      lastTouchDistance.current = getTouchDistance(touch1, touch2);
+      lastTouchCenter.current = getTouchCenter(touch1, touch2);
+    }
+  };
+
+  const handleTouchMove = (e: any) => {
+    const touches = e.evt.touches;
+
+    if (touches.length === 2 && lastTouchDistance.current !== null) {
+      // Pinch zoom in progress
+      e.evt.preventDefault();
+
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      const currentDistance = getTouchDistance(touch1, touch2);
+      const currentCenter = getTouchCenter(touch1, touch2);
+
+      const stage = stageRef.current;
+      if (!stage || !lastTouchCenter.current) return;
+
+      // Calculate zoom
+      const scaleChange = currentDistance / lastTouchDistance.current!;
+      const oldScale = scale;
+      const newScale = Math.max(0.1, Math.min(5, oldScale * scaleChange));
+
+      // Get the touch center relative to the stage
+      const rect = stage.container().getBoundingClientRect();
+      const centerPoint = {
+        x: currentCenter.x - rect.left,
+        y: currentCenter.y - rect.top,
+      };
+
+      // Calculate the point in canvas coordinates
+      const pointTo = {
+        x: (centerPoint.x - position.x) / oldScale,
+        y: (centerPoint.y - position.y) / oldScale,
+      };
+
+      // Calculate new position
+      const newPosition = {
+        x: centerPoint.x - pointTo.x * newScale,
+        y: centerPoint.y - pointTo.y * newScale,
+      };
+
+      setScale(newScale);
+      setPosition(newPosition);
+
+      lastTouchDistance.current = currentDistance;
+      lastTouchCenter.current = currentCenter;
+    }
+  };
+
+  const handleTouchEnd = (e: any) => {
+    const touches = e.evt.touches;
+
+    if (touches.length < 2) {
+      // Reset pinch zoom state
+      lastTouchDistance.current = null;
+      lastTouchCenter.current = null;
+    }
+  };
+
   /* ---------------- DRAWING ---------------- */
 
   const onMouseDown = (e: any) => {
@@ -388,6 +477,15 @@ export default function CanvasStage({
   };
 
   const onTouchStart = (e: any) => {
+    const touches = e.evt.touches;
+
+    // Two finger touch - pinch zoom
+    if (touches.length === 2) {
+      handleTouchStart(e);
+      return;
+    }
+
+    // Single finger touch - drawing
     e.evt.preventDefault();
     const pos = getTouchPos(e);
     if (!pos) return;
@@ -446,6 +544,15 @@ export default function CanvasStage({
   };
 
   const onTouchMove = (e: any) => {
+    const touches = e.evt.touches;
+
+    // Two finger touch - pinch zoom
+    if (touches.length === 2) {
+      handleTouchMove(e);
+      return;
+    }
+
+    // Single finger touch - drawing
     e.evt.preventDefault();
     if (isTyping.current) return;
     if (!isDrawing.current || !currentId.current) return;
@@ -477,17 +584,22 @@ export default function CanvasStage({
     );
   };
 
-  const onTouchEnd = () => {
-    if (tool === "text" || tool === "eraser") return;
+  const onTouchEnd = (e: any) => {
+    handleTouchEnd(e);
 
-    isDrawing.current = false;
+    // Only finalize drawing if it was a single touch (not pinch zoom)
+    if (e.evt.changedTouches.length === 1) {
+      if (tool === "text" || tool === "eraser") return;
 
-    if (currentStroke.current) {
-      sendStroke(currentStroke.current);
+      isDrawing.current = false;
+
+      if (currentStroke.current) {
+        sendStroke(currentStroke.current);
+      }
+
+      currentId.current = null;
+      currentStroke.current = null;
     }
-
-    currentId.current = null;
-    currentStroke.current = null;
   };
 
   /* ---------------- RENDER ---------------- */
@@ -558,6 +670,8 @@ export default function CanvasStage({
                   text={d.text!}
                   fill={d.color}
                   fontSize={18}
+                  width={400}
+                  wrap="word"
                 />
               );
 
@@ -578,38 +692,61 @@ export default function CanvasStage({
         </Layer>
       </Stage>
       {editingText && (
-        <textarea
-          ref={textareaRef}
-          autoFocus
-          className="absolute bg-transparent border-none outline-none resize-none"
+        <div
+          className="absolute"
           style={{
             left: editingText.x! * scale + position.x,
             top: editingText.y! * scale + position.y,
-            color: editingText.color,
-            fontSize: `${18 * scale}px`,
-            fontFamily: "inherit",
             transform: `scale(${1})`,
             transformOrigin: "top left",
           }}
-          onBlur={(e) => {
-            if (ignoreInitialBlur.current) {
-              ignoreInitialBlur.current = false;
-              textareaRef.current?.focus();
-              return;
-            }
-            finalizeText(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              finalizeText(e.currentTarget.value);
-            }
-            if (e.key === "Escape") {
-              isTyping.current = false;
-              setEditingText(null);
-            }
-          }}
-        />
+        >
+          <textarea
+            ref={textareaRef}
+            autoFocus
+            placeholder="Type text here..."
+            maxLength={500}
+            className="bg-white/95 backdrop-blur-sm border-2 border-indigo-500 
+              rounded-lg px-3 py-2 outline-none resize-none
+              shadow-lg shadow-indigo-500/20
+              placeholder:text-neutral-400
+              text-neutral-900
+              min-w-[200px] max-w-[400px]
+              overflow-hidden"
+            style={{
+              fontSize: `${18 * scale}px`,
+              fontFamily: "inherit",
+            }}
+            rows={1}
+            onInput={(e) => {
+              // Auto-resize textarea
+              const target = e.currentTarget;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 300) + 'px';
+            }}
+            onBlur={(e) => {
+              if (ignoreInitialBlur.current) {
+                ignoreInitialBlur.current = false;
+                textareaRef.current?.focus();
+                return;
+              }
+              finalizeText(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                finalizeText(e.currentTarget.value);
+              }
+              if (e.key === "Escape") {
+                isTyping.current = false;
+                setEditingText(null);
+              }
+            }}
+          />
+          <div className="text-xs text-neutral-600 bg-white/90 rounded px-2 py-1 mt-1">
+            Press <kbd className="px-1 py-0.5 bg-neutral-200 rounded text-neutral-700 font-mono text-xs">Enter</kbd> to save, <kbd className="px-1 py-0.5 bg-neutral-200 rounded text-neutral-700 font-mono text-xs">Shift+Enter</kbd> for new line
+          </div>
+        </div>
       )}
     </>
   );

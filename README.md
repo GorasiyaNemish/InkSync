@@ -10,11 +10,17 @@ This repository contains the frontend, backend service and shared packages, full
 
 ### 🎨 Whiteboard Capabilities
 - ✏️ **Drawing Tools**: Pen, rectangles, circles, and text annotations
-- 🗑️ **Eraser Tool**: Click to delete individual strokes
+- 🗑️ **Eraser Tool**: Click to delete individual strokes with improved detection
 - ↶↷ **Undo/Redo**: Full history tracking with keyboard shortcuts (Ctrl+Z/Y)
 - 🔍 **Zoom & Pan**: Mouse wheel zoom and middle-click pan navigation
 - 🎨 **Color Picker**: Customizable stroke colors
 - 👥 **Real-time Collaboration**: See other users' drawings instantly
+
+### 🚀 User Experience
+- ⚡ **No Login Required**: Create and join boards instantly
+- 🔗 **Easy Sharing**: Share board link with anyone
+- 🧹 **Auto Cleanup**: Boards automatically destroyed after 30 minutes of inactivity
+- 🗑️ **Smart Cleanup**: Empty boards cleaned up after 5 minutes
 
 ### 🏗️ Architecture
 - 🏗️ **Monorepo architecture** using `pnpm workspaces`
@@ -24,6 +30,7 @@ This repository contains the frontend, backend service and shared packages, full
 - 🚀 **Deployed on Render** with zero-config Docker runtime
 - 🔒 Environment‑based configuration
 - ♻️ Reproducible builds using `pnpm-lock.yaml`
+- 🧹 **Memory-efficient**: Automatic board cleanup and lifecycle management
 
 ---
 
